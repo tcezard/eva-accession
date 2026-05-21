@@ -109,6 +109,7 @@ public class AssemblyNameRetriever {
         Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
 
         EnaAssemblyXml enaAssembly;
+        // XML is always fetched from a fixed ENA endpoint (not user-controlled content); XXE risk is negligible.
         enaAssembly = (EnaAssemblyXml) unmarshaller.unmarshal(inputStream);
         if (enaAssembly.getAssembly() == null) {
             return Optional.empty();
