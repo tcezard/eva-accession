@@ -1,6 +1,6 @@
 variables:
   DOCKER_REGISTRY: dockerhub.ebi.ac.uk
-  DOCKER_IMAGE: dockerhub.ebi.ac.uk/ebivariation/eva-accession-ws
+  DOCKER_IMAGE: dockerhub.ebi.ac.uk/ebivariation/eva-accession
   K8S_REPO_URL: https://github.com/EBIvariation/eva-k8s.git
   MAVEN_SETTINGS: maven-settings.xml
   URL_MAVEN_SETTINGS: https://api.github.com/repos/EBIvariation/configuration/contents/eva-maven-settings.xml
@@ -32,7 +32,6 @@ variables:
   before_script:
     - echo "Waiting for Docker daemon to be ready..."
     - docker info
-    - echo -n $DOCKER_REGISTRY_PASSWORD | docker login -u $DOCKER_REGISTRY_USER --password-stdin $DOCKER_REGISTRY
   script:
     - docker build -f eva-accession-ws/Dockerfile -t $DOCKER_IMAGE:$IMAGE_TAG -t $DOCKER_IMAGE:$IMAGE_LATEST .
     - docker push $DOCKER_IMAGE:$IMAGE_TAG
@@ -91,8 +90,8 @@ variables:
 build:docker:dev:
   extends: .build_docker
   variables:
-    IMAGE_TAG: dev-$CI_COMMIT_SHORT_SHA
-    IMAGE_LATEST: dev-latest
+    IMAGE_TAG: eva-accession-ws-dev-$CI_COMMIT_SHORT_SHA
+    IMAGE_LATEST: eva-accession-ws-dev-latest
   only:
     - master
 
@@ -101,7 +100,7 @@ deploy-to-cluster:dev:
   needs:
     - build:docker:dev
   variables:
-    IMAGE_TAG: dev-$CI_COMMIT_SHORT_SHA
+    IMAGE_TAG: eva-accession-ws-dev-$CI_COMMIT_SHORT_SHA
     ENV: development
     MAVEN_PROFILE: development
     K8S_MANIFEST_PATH: k8s-manifests/eva-accession-ws/overlays/dev
@@ -121,7 +120,7 @@ deploy-to-cluster:staging:
   needs:
     - build:docker:dev
   variables:
-    IMAGE_TAG: dev-$CI_COMMIT_SHORT_SHA
+    IMAGE_TAG: eva-accession-ws-dev-$CI_COMMIT_SHORT_SHA
     ENV: staging
     MAVEN_PROFILE: development
     K8S_MANIFEST_PATH: k8s-manifests/eva-accession-ws/overlays/staging
