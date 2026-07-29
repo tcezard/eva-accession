@@ -19,18 +19,25 @@ package uk.ac.ebi.eva.accession.ws.configuration;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.PlatformTransactionManager;
 import uk.ac.ebi.ampt2d.commons.accession.block.initialization.BlockParameters;
 import uk.ac.ebi.ampt2d.commons.accession.persistence.jpa.monotonic.service.ContiguousIdBlockService;
 
+import javax.sql.DataSource;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
- * Read-only classes for the combination of {@code SpringDataContiguousIdServiceConfiguration} (in accession-commons,
- * enabled via {@code @EnableSpringDataContiguousIdService}) and eva-accession's
+ * Read-only classes for the combination of {@code SpringDataContiguousIdServiceConfiguration} (in
+ * accession-commons, enabled via {@code @EnableSpringDataContiguousIdService}) and eva-accession's
  * {@link uk.ac.ebi.eva.accession.core.configuration.ContiguousIdBlocksDataSourceConfiguration}, which together
  * provide the ContiguousIdBlockService bean that {@code SubmittedVariantAccessioningConfiguration} and its
  * siblings depend on.
@@ -39,18 +46,19 @@ import java.util.stream.Collectors;
  * ContiguousIdBlockService.getBlockParameters(categoryId) (used to compute the ss/rs accessioning thresholds) is a
  * pure in-memory lookup that never touches the database (see ContiguousIdBlockService.java in accession-commons:
  * only reserveNewBlock/save/reserveFirstUncompletedBlockForCategoryIdAndApplicationInstanceId touch the JPA
- * repository, and none of those are on eva-accession-ws's read paths). But the original's JPA-backed wiring still
- * requires an EntityManagerFactory/DataSource to be constructed at startup regardless, which is why this webservice
- * used to require a live "continuous.id.blocks" PostgreSQL connection just to boot.
- *
- * The {@code contiguousBlockInitializations()}/{@code contiguousIdBlockService()} bodies below are copied from
- * {@code SpringDataContiguousIdServiceConfiguration}; the one deliberate difference (marked below) is passing
- * {@code null} instead of a real, JPA-backed {@code ContiguousIdBlockRepository} - safe here because that
- * repository is never touched by the read-only code paths this bean actually serves.
+ * repository, and none of those are on eva-accession-ws's read paths).
+ * ContiguousIdBlockService also has a field {@code @PersistenceContext EntityManager entityManager} -
+ * Spring's core PersistenceAnnotationBeanPostProcessor injects that field for *any* instance of the class
+ * registered as a bean, regardless of how it was constructed or whether the injected EntityManager is ever
+ * actually used. That injection needs an EntityManagerFactory bean to exist in the context; without one, the
+ * context fails to start even though nothing on eva-accession-ws's read paths would ever touch it. So this
+ * configuration provides its own EntityManagerFactory backed by an embedded, in-process HSQLDB instance instead
+ * of the original's PostgreSQL DataSource.
+ * The method transactionManager serves a similar purpose since ContiguousIdBlockService contains the Transactional annotation
  *
  * {@code @ConditionalOnMissingBean} makes this back off whenever a real, JPA-backed ContiguousIdBlockService is
  * already present in the context (e.g. tests that explicitly import the write-capable core configuration to seed
- * data), so it never shadows a functional bean with this read-only, repository-less one.
+ * data), so it never shadows a functional bean with this read-only one.
  */
 @Configuration
 @ConditionalOnMissingBean(name = "contiguousIdBlockService")
@@ -60,6 +68,38 @@ public class ReadOnlyContiguousIdBlockServiceConfiguration {
     @ConfigurationProperties(prefix = "accessioning.monotonic")
     public HashMap<String, HashMap<String, String>> contiguousBlockInitializations() {
         return new HashMap<>();
+    }
+
+    // An embedded, in-process HSQLDB instance instead of a PostgreSQL DataSource built from continuous.id.blocks.datasource.* properties.
+    @Bean
+    public DataSource readOnlyContiguousIdBlocksDataSource() {
+        return DataSourceBuilder.create()
+                                 .driverClassName("org.hsqldb.jdbc.JDBCDriver")
+                                 .url("jdbc:hsqldb:mem:eva-accession-ws-contiguous-id-blocks;sql.syntax_pgs=true;DB_CLOSE_DELAY=-1")
+                                 .username("SA")
+                                 .password("")
+                                 .build();
+    }
+
+    @Bean
+    public LocalContainerEntityManagerFactoryBean entityManagerFactory() {
+        LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
+        em.setDataSource(readOnlyContiguousIdBlocksDataSource());
+        em.setPackagesToScan("uk.ac.ebi.ampt2d.commons.accession.persistence.jpa.monotonic.entities");
+        HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
+        em.setJpaVendorAdapter(vendorAdapter);
+
+        Properties jpaProperties = new Properties();
+        jpaProperties.setProperty("hibernate.physical_naming_strategy",
+                "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy");
+        jpaProperties.setProperty("hibernate.hbm2ddl.auto", "create");
+        em.setJpaProperties(jpaProperties);
+        return em;
+    }
+
+    @Bean
+    public PlatformTransactionManager transactionManager(jakarta.persistence.EntityManagerFactory entityManagerFactory) {
+        return new JpaTransactionManager(entityManagerFactory);
     }
 
     @Bean
