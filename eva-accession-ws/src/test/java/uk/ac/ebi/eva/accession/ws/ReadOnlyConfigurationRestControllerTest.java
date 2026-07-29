@@ -50,18 +50,12 @@ import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.when;
 
 /**
- * Unlike the other REST controller tests in this package, this test does NOT import
+ * Unlike the other tests in this package, this test does NOT import
  * {@code SubmittedVariantAccessioningConfiguration} or {@code ContiguousIdBlocksDataSourceConfiguration} (the
  * real, JPA/PostgreSQL-backed core configuration). It only relies on the application's own default wiring
- * (EvaAccessionApplication -&gt; ApplicationConfiguration -&gt; the ReadOnly* configurations), the same wiring used
- * in production. Every other test in this package imports the real configuration to get a write-capable
- * accessioning service for seeding data, which means their Spring context always has a bean named
- * "submittedVariantAccessioningService" already present - so ReadOnlySubmittedVariantAccessioningConfiguration's
- * {@code @ConditionalOnMissingBean} always backs off in those tests, and its actual bean-construction code path
- * (including ReadOnlyContiguousIdBlockServiceConfiguration's embedded-HSQLDB EntityManagerFactory) never runs.
- * This test is the one that actually exercises it - test data is seeded directly into MongoDB instead of through
- * a write-capable service, and {@code accession-ws-readonly-test.properties} deliberately has no
- * continuous.id.blocks.datasource.* properties at all.
+ * (EvaAccessionApplication ApplicationConfiguration the ReadOnly* configurations), the same wiring used
+ * in production. Other historical tests imports accessioning service for seeding data, which means their Spring
+ * context always has a bean named "submittedVariantAccessioningService" already present.
  */
 @ExtendWith(SpringExtension.class)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
